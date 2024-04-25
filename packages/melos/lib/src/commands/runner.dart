@@ -14,6 +14,7 @@ import 'package:path/path.dart' as p;
 import 'package:pool/pool.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:pubspec/pubspec.dart';
+import 'package:pubspec_manager/pubspec_manager.dart' as pubspec;
 import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
@@ -42,15 +43,15 @@ import '../scripts.dart';
 import '../workspace.dart';
 import '../workspace_configs.dart';
 
+part 'analyze.dart';
 part 'bootstrap.dart';
 part 'clean.dart';
 part 'exec.dart';
+part 'format.dart';
 part 'list.dart';
 part 'publish.dart';
 part 'run.dart';
 part 'version.dart';
-part 'analyze.dart';
-part 'format.dart';
 
 enum CommandWithLifecycle {
   bootstrap,

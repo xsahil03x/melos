@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:glob/glob.dart';
 import 'package:meta/meta.dart';
 import 'package:pubspec/pubspec.dart';
+import 'package:pubspec_manager/pubspec_manager.dart';
 
 import '../common/glob.dart';
 import '../common/glob_equality.dart';
@@ -16,6 +17,7 @@ class BootstrapCommandConfigs {
     this.runPubGetInParallel = true,
     this.runPubGetOffline = false,
     this.enforceLockfile = false,
+    this.generateSyncMessage = false,
     this.environment,
     this.dependencies,
     this.devDependencies,
@@ -43,6 +45,13 @@ class BootstrapCommandConfigs {
 
     final enforceLockfile = assertKeyIsA<bool?>(
           key: 'enforceLockfile',
+          map: yaml,
+          path: 'command/bootstrap',
+        ) ??
+        false;
+
+    final generateSyncMessage = assertKeyIsA<bool?>(
+          key: 'generateSyncMessage',
           map: yaml,
           path: 'command/bootstrap',
         ) ??
@@ -97,6 +106,7 @@ class BootstrapCommandConfigs {
       runPubGetInParallel: runPubGetInParallel,
       runPubGetOffline: runPubGetOffline,
       enforceLockfile: enforceLockfile,
+      generateSyncMessage: generateSyncMessage,
       environment: environment,
       dependencies: dependencies,
       devDependencies: devDependencies,
@@ -130,6 +140,10 @@ class BootstrapCommandConfigs {
   /// The default is `false`.
   final bool enforceLockfile;
 
+  /// Whether to generate a message alongside synced [environment],
+  /// [dependencies] and [devDependencies] mentioning the source of the sync.
+  final bool generateSyncMessage;
+
   /// Environment configuration to be synced between all packages.
   final Environment? environment;
 
@@ -151,6 +165,7 @@ class BootstrapCommandConfigs {
       'runPubGetInParallel': runPubGetInParallel,
       'runPubGetOffline': runPubGetOffline,
       'enforceLockfile': enforceLockfile,
+      'generateSyncMessage': generateSyncMessage,
       if (environment != null) 'environment': environment!.toJson(),
       if (dependencies != null)
         'dependencies': dependencies!.map(
@@ -174,6 +189,7 @@ class BootstrapCommandConfigs {
       other.runPubGetInParallel == runPubGetInParallel &&
       other.runPubGetOffline == runPubGetOffline &&
       other.enforceLockfile == enforceLockfile &&
+      other.generateSyncMessage == generateSyncMessage &&
       // Extracting equality from environment here as it does not implement ==
       other.environment?.sdkConstraint == environment?.sdkConstraint &&
       const DeepCollectionEquality().equals(
@@ -193,6 +209,7 @@ class BootstrapCommandConfigs {
       runPubGetInParallel.hashCode ^
       runPubGetOffline.hashCode ^
       enforceLockfile.hashCode ^
+      generateSyncMessage.hashCode ^
       // Extracting hashCode from environment here as it does not implement
       // hashCode
       (environment?.sdkConstraint).hashCode ^
@@ -212,6 +229,7 @@ BootstrapCommandConfigs(
   runPubGetInParallel: $runPubGetInParallel,
   runPubGetOffline: $runPubGetOffline,
   enforceLockfile: $enforceLockfile,
+  generateSyncMessage: $generateSyncMessage,
   environment: $environment,
   dependencies: $dependencies,
   devDependencies: $devDependencies,

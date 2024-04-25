@@ -7,8 +7,8 @@ import 'package:glob/list_local_fs.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:pool/pool.dart';
-import 'package:pub_semver/pub_semver.dart';
-import 'package:pubspec/pubspec.dart';
+// import 'package:pub_semver/pub_semver.dart';
+import 'package:pubspec_manager/pubspec_manager.dart';
 
 import 'common/environment_variable_key.dart';
 import 'common/exception.dart';
@@ -445,7 +445,7 @@ class InvalidPackageFiltersException extends MelosException {
 
 // Not using MapView to prevent map mutation
 class PackageMap {
-  PackageMap(Map<String, Package> packages, this._logger)
+  PackageMap(Map<Name, Package> packages, this._logger)
       : _map = _packagesSortedByName(packages);
 
   static const _commonIgnorePatterns = [
@@ -460,11 +460,11 @@ class PackageMap {
     '**/.plugin_symlinks/**',
   ];
 
-  static Map<String, Package> _packagesSortedByName(
-    Map<String, Package> packages,
+  static Map<Name, Package> _packagesSortedByName(
+    Map<Name, Package> packages,
   ) {
     final sortedNames = packages.keys.sorted((a, b) {
-      return a.toLowerCase().compareTo(b.toLowerCase());
+      return a.value.toLowerCase().compareTo(b.value.toLowerCase());
     });
 
     // Map literals creates an HashMap which preserves key order.
@@ -490,14 +490,14 @@ class PackageMap {
       ],
     );
 
-    final packageMap = <String, Package>{};
+    final packageMap = <Name, Package>{};
 
     await Future.wait<void>(
       pubspecFiles.map((pubspecFile) async {
         final pubspecDirPath = pubspecFile.parent.path;
-        final pubSpec = await PubSpec.load(pubspecFile.parent);
+        final pubSpec = PubSpec.load(directory: pubspecDirPath);
 
-        final name = pubSpec.name!;
+        final name = pubSpec.name;
 
         if (packageMap.containsKey(name)) {
           throw MelosConfigException(
@@ -516,12 +516,12 @@ The packages that caused the problem are:
           name: name,
           path: pubspecDirPath,
           pathRelativeToWorkspace: relativePath(pubspecDirPath, workspacePath),
-          version: pubSpec.version ?? Version.none,
+          version: pubSpec.version,
           publishTo: pubSpec.publishTo,
           packageMap: packageMap,
-          dependencies: pubSpec.dependencies.keys.toList(),
-          devDependencies: pubSpec.devDependencies.keys.toList(),
-          dependencyOverrides: pubSpec.dependencyOverrides.keys.toList(),
+          dependencies: pubSpec.dependencies,
+          devDependencies: pubSpec.devDependencies,
+          dependencyOverrides: pubSpec.dependencyOverrides,
           pubSpec: pubSpec,
         );
       }),
@@ -563,16 +563,16 @@ The packages that caused the problem are:
     );
   }
 
-  final Map<String, Package> _map;
+  final Map<Name, Package> _map;
   final MelosLogger _logger;
 
-  Iterable<String> get keys => _map.keys;
+  Iterable<Name> get keys => _map.keys;
 
   Iterable<Package> get values => _map.values;
 
   int get length => _map.length;
 
-  Package? operator [](String key) => _map[key];
+  Package? operator [](Name key) => _map[key];
 
   /// Detect packages in the workspace with the provided filters.
   ///
@@ -615,7 +615,7 @@ extension on Iterable<Package> {
     if (ignore.isEmpty) return this;
 
     return where((package) {
-      return ignore.every((glob) => !glob.matches(package.name));
+      return ignore.every((glob) => !glob.matches(package.name.value));
     });
   }
 
@@ -736,8 +736,8 @@ extension on Iterable<Package> {
 
     return where((package) {
       return dependsOn.every((element) {
-        return package.dependencies.contains(element) ||
-            package.devDependencies.contains(element);
+        return package.dependencies.exists(element) ||
+            package.devDependencies.exists(element);
       });
     });
   }
@@ -747,8 +747,8 @@ extension on Iterable<Package> {
 
     return where((package) {
       return noDependsOn.every((element) {
-        return !package.dependencies.contains(element) &&
-            !package.devDependencies.contains(element);
+        return !package.dependencies.exists(element) &&
+            !package.devDependencies.exists(element);
       });
     });
   }
@@ -779,7 +779,7 @@ class Package {
     required this.devDependencies,
     required this.dependencies,
     required this.dependencyOverrides,
-    required Map<String, Package> packageMap,
+    required Map<Name, Package> packageMap,
     required this.name,
     required this.path,
     required this.pathRelativeToWorkspace,
@@ -789,14 +789,14 @@ class Package {
   })  : _packageMap = packageMap,
         assert(p.isAbsolute(path));
 
-  final Map<String, Package> _packageMap;
+  final Map<Name, Package> _packageMap;
 
-  final List<String> devDependencies;
-  final List<String> dependencies;
-  final List<String> dependencyOverrides;
+  final Dependencies devDependencies;
+  final Dependencies dependencies;
+  final Dependencies dependencyOverrides;
 
-  final Uri? publishTo;
-  final String name;
+  final PublishTo? publishTo;
+  final Name name;
   final Version version;
   final String path;
   final PubSpec pubSpec;
@@ -819,21 +819,21 @@ class Package {
 
   /// The dependencies listed in `dependencies:` inside the package's
   /// `pubspec.yaml` that are part of the melos workspace.
-  late final Map<String, Package> dependenciesInWorkspace =
+  late final Map<Name, Package> dependenciesInWorkspace =
       _packagesInWorkspaceForNames(dependencies);
 
   /// The dependencies listed in `dev_dependencies:` inside the package's
   /// `pubspec.yaml` that are part of the melos workspace.
-  late final Map<String, Package> devDependenciesInWorkspace =
+  late final Map<Name, Package> devDependenciesInWorkspace =
       _packagesInWorkspaceForNames(devDependencies);
 
   /// The dependencies listed in `dependency_overrides:` inside the package's
   /// `pubspec.yaml` that are part of the melos workspace.
-  late final Map<String, Package> dependencyOverridesInWorkspace =
+  late final Map<Name, Package> dependencyOverridesInWorkspace =
       _packagesInWorkspaceForNames(dependencyOverrides);
 
   /// The packages that depend on this package as a dependency.
-  late final Map<String, Package> dependentsInWorkspace = {
+  late final Map<Name, Package> dependentsInWorkspace = {
     for (final entry in _packageMap.entries)
       if (entry.value.dependenciesInWorkspace.containsKey(name))
         entry.key: entry.value,
@@ -867,7 +867,7 @@ class Package {
     directlyRelatedPackages: (package, _) => package.allDependentsInWorkspace,
   );
 
-  Map<String, Package> _packagesInWorkspaceForNames(List<String> names) {
+  Map<Name, Package> _packagesInWorkspaceForNames(Dependencies names) {
     return {
       for (final name in names)
         if (_packageMap.containsKey(name)) name: _packageMap[name]!,
@@ -885,14 +885,14 @@ class Package {
   /// Returns whether this package is for Flutter.
   ///
   /// This is determined by whether the package depends on the Flutter SDK.
-  late final bool isFlutterPackage = dependencies.contains('flutter');
+  late final bool isFlutterPackage = dependencies.exists('flutter');
 
   /// Returns whether this package is private (publish_to set to 'none').
   bool get isPrivate {
     // Unversioned package, assuming private, e.g. example apps.
-    if (pubSpec.version == null) return true;
+    if (pubSpec.version.isMissing || pubSpec.version.isEmpty) return true;
 
-    return publishTo.toString() == 'none';
+    return publishTo?.value == PublishTo.noneKeyword;
   }
 
   /// Queries the pub.dev registry for published versions of this package.
@@ -902,8 +902,13 @@ class Package {
       return null;
     }
 
-    final pubClient = pub.PubHostedClient.fromUri(pubHosted: publishTo);
-    return pubClient.fetchPackage(name);
+    final pubHosted = switch (publishTo) {
+      final publishTo? => Uri.tryParse(publishTo.value),
+      _ => null,
+    };
+
+    final pubClient = pub.PubHostedClient.fromUri(pubHosted: pubHosted);
+    return pubClient.fetchPackage(name.value);
   }
 
   /// The example [Package] contained within this package, if any.
@@ -1079,11 +1084,11 @@ Map<String, Package> _transitivelyRelatedPackages({
     final current = workingSet.removeLast();
 
     // Don't add the root to the result.
-    if (current.name == root.name) {
+    if (current.name.value == root.name.value) {
       continue;
     }
 
-    result.putIfAbsent(current.name, () {
+    result.putIfAbsent(current.name.value, () {
       // Since `current` is a package that was not in the result, we are
       // seeing it for the first time and still need to traverse its related
       // packages.
@@ -1097,8 +1102,10 @@ Map<String, Package> _transitivelyRelatedPackages({
 }
 
 extension on PubSpec {
-  Flutter? get flutter =>
-      (unParsedYaml?['flutter'] as Map<Object?, Object?>?).let(Flutter.new);
+  Flutter? get flutter {
+    return (unParsedYaml?['flutter'] as Map<Object?, Object?>?)
+        .let(Flutter.new);
+  }
 }
 
 class Flutter {
